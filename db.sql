@@ -1,5 +1,5 @@
 -- =========================================================
--- 🌐 PRODUCT SURVEY APP - SQL FINAL (Con RLS + Triggers)
+-- 🌐 PRODUCT SURVEY APP - SQL FINAL (Sin num_images ni is_active)
 -- =========================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -15,8 +15,7 @@ CREATE TABLE "Admin" (
     password VARCHAR(255) NOT NULL,
     restore_code VARCHAR(255),
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -28,8 +27,7 @@ CREATE TABLE "Product_Group" (
     description TEXT,
     admin_id UUID NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -40,11 +38,9 @@ CREATE TABLE "Product" (
     name VARCHAR(100) NOT NULL,
     description TEXT,
     weight DECIMAL(10,2),
-    num_images INT DEFAULT 0,
     product_group_id INT NOT NULL REFERENCES "Product_Group"(product_group_id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -70,8 +66,7 @@ CREATE TABLE "Survey_Group" (
     description TEXT,
     admin_id UUID NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE,
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -85,8 +80,7 @@ CREATE TABLE "Survey" (
     is_public BOOLEAN DEFAULT true,
     password VARCHAR(255),
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -98,8 +92,7 @@ CREATE TABLE "Question" (
     survey_id INT NOT NULL REFERENCES "Survey"(survey_id) ON DELETE CASCADE,
     num_product INT REFERENCES "Product"(product_id) ON DELETE RESTRICT,
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -110,8 +103,7 @@ CREATE TABLE "User_Account" (
     name VARCHAR(100),
     email VARCHAR(255) UNIQUE,
     created_at TIMESTAMP DEFAULT now(),
-    updated_at TIMESTAMP DEFAULT now(),
-    is_active BOOLEAN DEFAULT true
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
@@ -161,6 +153,8 @@ ALTER TABLE "Question_Product" ENABLE ROW LEVEL SECURITY;
 
 -- =========================================================
 -- 🔐 POLÍTICAS DE SEGURIDAD
+-- =========================================================
+-- (Se mantienen igual, ya que no dependen de num_images ni is_active)
 -- =========================================================
 
 -- 👑 ADMIN
@@ -321,40 +315,6 @@ USING (
 -- =========================================================
 -- ⚙️ FUNCIONES Y TRIGGERS
 -- =========================================================
-
--- 🔄 Actualizar num_images automáticamente
-CREATE OR REPLACE FUNCTION update_num_images()
-RETURNS TRIGGER AS $$
-DECLARE
-    target_product_id INT;
-BEGIN
-    IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
-        target_product_id := NEW.product_id;
-    ELSE
-        target_product_id := OLD.product_id;
-    END IF;
-
-    UPDATE "Product"
-    SET num_images = (
-        SELECT COUNT(*) FROM "Image" WHERE product_id = target_product_id
-    )
-    WHERE product_id = target_product_id;
-
-    RETURN NULL;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trg_image_insert
-AFTER INSERT ON "Image"
-FOR EACH ROW EXECUTE FUNCTION update_num_images();
-
-CREATE TRIGGER trg_image_delete
-AFTER DELETE ON "Image"
-FOR EACH ROW EXECUTE FUNCTION update_num_images();
-
-CREATE TRIGGER trg_image_update
-AFTER UPDATE OF product_id ON "Image"
-FOR EACH ROW EXECUTE FUNCTION update_num_images();
 
 -- 🕒 Actualizar updated_at
 CREATE OR REPLACE FUNCTION set_updated_at()
