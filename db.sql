@@ -114,6 +114,7 @@ CREATE TABLE "Answer" (
     question_id INT NOT NULL REFERENCES "Question"(question_id) ON DELETE CASCADE,
     user_id UUID REFERENCES "User_Account"(user_id) ON DELETE SET NULL,
     answer_value INT CHECK (answer_value >= 0),
+    comment VARCHAR (200),
     is_anonymous BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT now(),
     updated_at TIMESTAMP DEFAULT now()
