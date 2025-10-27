@@ -1,9 +1,5 @@
 -- =========================================================
--- CREACIÓN DE TABLAS (CORREGIDO)
--- =========================================================
-
--- =========================================================
--- CREACIÓN DE TABLAS (CORREGIDO)
+-- CREACIÓN DE TABLAS (ACTUALIZADO - MODEL → PRODUCT)
 -- =========================================================
 
 CREATE TABLE "Admin" (
@@ -15,24 +11,27 @@ CREATE TABLE "Admin" (
     created_at TIMESTAMP DEFAULT now()
 );
 
-CREATE TABLE "Model_Group" (
-    model_group_id SERIAL PRIMARY KEY,
+-- CAMBIADO: Model_Group → Product_Group
+CREATE TABLE "Product_Group" (
+    product_group_id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
     admin_id uuid NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE
 );
 
-CREATE TABLE "Model" (
-    model_id SERIAL PRIMARY KEY,
+-- CAMBIADO: Model → Product
+CREATE TABLE "Product" (
+    product_id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     keyshotXR_url TEXT NOT NULL,
-    model_group_id INT NOT NULL REFERENCES "Model_Group"(model_group_id) ON DELETE CASCADE
+    product_group_id INT NOT NULL REFERENCES "Product_Group"(product_group_id) ON DELETE CASCADE
 );
 
+-- CAMBIADO: model_id → product_id
 CREATE TABLE "Image" (
     image_id SERIAL PRIMARY KEY,
     url TEXT NOT NULL,
-    model_id INT NOT NULL REFERENCES "Model"(model_id) ON DELETE CASCADE
+    product_id INT NOT NULL REFERENCES "Product"(product_id) ON DELETE CASCADE
 );
 
 CREATE TABLE "Survey_Group" (
@@ -52,11 +51,12 @@ CREATE TABLE "Survey" (
     created_at TIMESTAMP DEFAULT now()
 );
 
+-- CAMBIADO: num_model → num_product
 CREATE TABLE "Question" (
     question_id SERIAL PRIMARY KEY,
     question_text TEXT NOT NULL,
     survey_id INT NOT NULL REFERENCES "Survey"(survey_id) ON DELETE CASCADE,
-    num_model INT  -- Nueva columna agregada
+    num_product INT  -- Columna actualizada
 );
 
 CREATE TABLE "User_Account" (
@@ -75,37 +75,38 @@ CREATE TABLE "Answer" (
     created_at TIMESTAMP DEFAULT now()
 );
 
-CREATE TABLE "Survey_Model" (
-    survey_model_id SERIAL PRIMARY KEY,
+-- CAMBIADO: Survey_Model → Survey_Product, model_id → product_id
+CREATE TABLE "Survey_Product" (
+    survey_product_id SERIAL PRIMARY KEY,
     survey_id INT NOT NULL REFERENCES "Survey"(survey_id) ON DELETE CASCADE,
-    model_id INT NOT NULL REFERENCES "Model"(model_id) ON DELETE CASCADE
+    product_id INT NOT NULL REFERENCES "Product"(product_id) ON DELETE CASCADE
 );
 
-CREATE TABLE "Question_Model" (
-    question_model_id SERIAL PRIMARY KEY,
+-- CAMBIADO: Question_Model → Question_Product, model_id → product_id
+CREATE TABLE "Question_Product" (
+    question_product_id SERIAL PRIMARY KEY,
     question_id INT NOT NULL REFERENCES "Question"(question_id) ON DELETE CASCADE,
-    model_id INT NOT NULL REFERENCES "Model"(model_id) ON DELETE CASCADE
+    product_id INT NOT NULL REFERENCES "Product"(product_id) ON DELETE CASCADE
 );
 
--- ... el resto del script (RLS y políticas) se mantiene igual ...
 -- =========================================================
 -- HABILITAR ROW LEVEL SECURITY
 -- =========================================================
 
-ALTER TABLE "Admin" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Model_Group" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Model" ENABLE ROW LEVEL SECURITY;
+/* ALTER TABLE "Admin" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Product_Group" ENABLE ROW LEVEL SECURITY;  -- Actualizado
+ALTER TABLE "Product" ENABLE ROW LEVEL SECURITY;        -- Actualizado
 ALTER TABLE "Image" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Survey_Group" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Survey" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Question" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "User_Account" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Answer" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Survey_Model" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Question_Model" ENABLE ROW LEVEL SECURITY;
-
+ALTER TABLE "Survey_Product" ENABLE ROW LEVEL SECURITY;  -- Actualizado
+ALTER TABLE "Question_Product" ENABLE ROW LEVEL SECURITY; -- Actualizado
+ */
 -- =========================================================
--- 🔐 POLÍTICAS DE ADMINISTRADORES
+-- 🔐 POLÍTICAS DE ADMINISTRADORES (ACTUALIZADAS)
 -- =========================================================
 
 CREATE POLICY "Admins can read and update own data"
@@ -113,30 +114,33 @@ ON "Admin"
 FOR ALL
 USING (auth.uid() = admin_id);
 
-CREATE POLICY "Admins manage their own model groups"
-ON "Model_Group"
+-- CAMBIADO: Model_Group → Product_Group
+CREATE POLICY "Admins manage their own product groups"
+ON "Product_Group"
 FOR ALL
 USING (auth.uid() = admin_id);
 
-CREATE POLICY "Admins manage their own models"
-ON "Model"
+-- CAMBIADO: Model → Product, model_group_id → product_group_id
+CREATE POLICY "Admins manage their own products"
+ON "Product"
 FOR ALL
 USING (
   auth.uid() = (
-    SELECT mg.admin_id FROM "Model_Group" mg 
-    WHERE mg.model_group_id = "Model".model_group_id
+    SELECT pg.admin_id FROM "Product_Group" pg 
+    WHERE pg.product_group_id = "Product".product_group_id
   )
 );
 
+-- CAMBIADO: Referencias actualizadas a Product
 CREATE POLICY "Admins manage their own images"
 ON "Image"
 FOR ALL
 USING (
   auth.uid() = (
-    SELECT mg.admin_id
-    FROM "Model_Group" mg
-    JOIN "Model" m ON m.model_group_id = mg.model_group_id
-    WHERE m.model_id = "Image".model_id
+    SELECT pg.admin_id
+    FROM "Product_Group" pg
+    JOIN "Product" p ON p.product_group_id = pg.product_group_id
+    WHERE p.product_id = "Image".product_id
   )
 );
 
@@ -175,28 +179,24 @@ USING (
 );
 
 -- =========================================================
--- 🔐 POLÍTICAS DE USER_ACCOUNT (NUEVAS)
+-- 🔐 POLÍTICAS DE USER_ACCOUNT
 -- =========================================================
 
--- Usuarios pueden ver solo su propia cuenta
 CREATE POLICY "Users can view own account" 
 ON "User_Account" 
 FOR SELECT 
 USING (auth.uid() = user_id);
 
--- Usuarios pueden insertar solo su propia cuenta
 CREATE POLICY "Users can insert own account" 
 ON "User_Account" 
 FOR INSERT 
 WITH CHECK (auth.uid() = user_id);
 
--- Usuarios pueden actualizar solo su propia cuenta
 CREATE POLICY "Users can update own account" 
 ON "User_Account" 
 FOR UPDATE 
 USING (auth.uid() = user_id);
 
--- Administradores pueden gestionar todas las cuentas de usuario
 CREATE POLICY "Admins can manage all user accounts" 
 ON "User_Account" 
 FOR ALL 
@@ -241,34 +241,37 @@ USING (
 );
 
 -- =========================================================
--- 🔐 POLÍTICAS DE TABLAS DE RELACIÓN
+-- 🔐 POLÍTICAS DE TABLAS DE RELACIÓN (ACTUALIZADAS)
 -- =========================================================
 
-CREATE POLICY "Admins manage survey-model links"
-ON "Survey_Model"
+-- CAMBIADO: Survey_Model → Survey_Product, model_id → product_id
+CREATE POLICY "Admins manage survey-product links"
+ON "Survey_Product"
 FOR ALL
 USING (
   auth.uid() IN (
     SELECT sg.admin_id
     FROM "Survey_Group" sg
     JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
-    WHERE s.survey_id = "Survey_Model".survey_id
+    WHERE s.survey_id = "Survey_Product".survey_id
   )
 );
 
-CREATE POLICY "Public can view survey-models from public surveys"
-ON "Survey_Model"
+-- CAMBIADO: Survey_Model → Survey_Product
+CREATE POLICY "Public can view survey-products from public surveys"
+ON "Survey_Product"
 FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM "Survey" s
-    WHERE s.survey_id = "Survey_Model".survey_id
+    WHERE s.survey_id = "Survey_Product".survey_id
     AND s.is_public = true
   )
 );
 
-CREATE POLICY "Admins manage question-model links"
-ON "Question_Model"
+-- CAMBIADO: Question_Model → Question_Product, model_id → product_id
+CREATE POLICY "Admins manage question-product links"
+ON "Question_Product"
 FOR ALL
 USING (
   auth.uid() IN (
@@ -276,36 +279,36 @@ USING (
     FROM "Survey_Group" sg
     JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
     JOIN "Question" q ON q.survey_id = s.survey_id
-    WHERE q.question_id = "Question_Model".question_id
+    WHERE q.question_id = "Question_Product".question_id
   )
 );
 
-CREATE POLICY "Public can view question-models from public surveys"
-ON "Question_Model"
+-- CAMBIADO: Question_Model → Question_Product
+CREATE POLICY "Public can view question-products from public surveys"
+ON "Question_Product"
 FOR SELECT
 USING (
   EXISTS (
     SELECT 1 FROM "Question" q
     JOIN "Survey" s ON q.survey_id = s.survey_id
-    WHERE q.question_id = "Question_Model".question_id
+    WHERE q.question_id = "Question_Product".question_id
     AND s.is_public = true
   )
 );
 
 -- =========================================================
--- 🔥 ELIMINAR TODAS LAS TABLAS EN ORDEN CORRECTO
+-- 🔥 SCRIPT DE ELIMINACIÓN ACTUALIZADO
 -- =========================================================
-
-/* DROP TABLE IF EXISTS "Question_Model" CASCADE;
-DROP TABLE IF EXISTS "Survey_Model" CASCADE;
+/*
+DROP TABLE IF EXISTS "Question_Product" CASCADE;
+DROP TABLE IF EXISTS "Survey_Product" CASCADE;
 DROP TABLE IF EXISTS "Answer" CASCADE;
 DROP TABLE IF EXISTS "Question" CASCADE;
-DROP TABLE IF EXISTS "Survey" CASCADE;
-DROP TABLE IF EXISTS "Group_Survey" CASCADE;
 DROP TABLE IF EXISTS "Image" CASCADE;
-DROP TABLE IF EXISTS "Model" CASCADE;
-DROP TABLE IF EXISTS "Model_Group" CASCADE;
+DROP TABLE IF EXISTS "Survey" CASCADE;
+DROP TABLE IF EXISTS "Product" CASCADE;
+DROP TABLE IF EXISTS "Product_Group" CASCADE;
+DROP TABLE IF EXISTS "Survey_Group" CASCADE;
 DROP TABLE IF EXISTS "User_Account" CASCADE;
 DROP TABLE IF EXISTS "Admin" CASCADE;
-DROP TABLE IF EXISTS "User" CASCADE;
-DROP TABLE IF EXISTS "Survey_Group" CASCADE; */
+*/
