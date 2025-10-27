@@ -1,314 +1,393 @@
 -- =========================================================
--- 📦 SISTEMA DE ENCUESTAS SOBRE MODELOS 3D (CORREGIDO)
--- Compatible con PostgreSQL / Supabase
+-- 🌐 PRODUCT SURVEY APP - SQL FINAL (Con RLS + Triggers)
 -- =========================================================
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- =========================================================
--- 🧑‍💼 TABLA ADMIN
+-- 🧑‍💼 ADMINISTRADORES
 -- =========================================================
 CREATE TABLE "Admin" (
-    admin_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    admin_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,
     email VARCHAR(255) UNIQUE NOT NULL,
     password VARCHAR(255) NOT NULL,
     restore_code VARCHAR(255),
-    created_at TIMESTAMP DEFAULT now()
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- 🗂️ TABLA MODEL_GROUP
+-- 🧩 PRODUCT GROUPS
 -- =========================================================
-CREATE TABLE "Model_Group" (
-    model_group_id SERIAL PRIMARY KEY,
+CREATE TABLE "Product_Group" (
+    product_group_id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    admin_id uuid NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE
+    admin_id UUID NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- 🧱 TABLA MODEL
+-- 🛍️ PRODUCTS
 -- =========================================================
-CREATE TABLE "Model" (
-    model_id SERIAL PRIMARY KEY,
+CREATE TABLE "Product" (
+    product_id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
-    keyshotXR_url TEXT NOT NULL,
-    model_group_id INT NOT NULL REFERENCES "Model_Group"(model_group_id) ON DELETE CASCADE
+    description TEXT,
+    weight DECIMAL(10,2),
+    num_images INT DEFAULT 0,
+    product_group_id INT NOT NULL REFERENCES "Product_Group"(product_group_id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- 🖼️ TABLA IMAGE
+-- 🖼️ IMAGES
 -- =========================================================
 CREATE TABLE "Image" (
     image_id SERIAL PRIMARY KEY,
     url TEXT NOT NULL,
     path TEXT NOT NULL,
-    model_id INT NOT NULL REFERENCES "Model"(model_id) ON DELETE CASCADE
+    weight DECIMAL(10,2),
+    dimension VARCHAR(100),
+    product_id INT NOT NULL REFERENCES "Product"(product_id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
--- 📋 TABLA SURVEY_GROUP
+-- 📋 SURVEY GROUPS
 -- =========================================================
 CREATE TABLE "Survey_Group" (
     survey_group_id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     description TEXT,
-    admin_id uuid NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE
+    admin_id UUID NOT NULL REFERENCES "Admin"(admin_id) ON DELETE CASCADE,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- 🧩 TABLA SURVEY
+-- 🧾 SURVEYS
 -- =========================================================
 CREATE TABLE "Survey" (
     survey_id SERIAL PRIMARY KEY,
     title VARCHAR(150) NOT NULL,
     description TEXT,
     survey_group_id INT NOT NULL REFERENCES "Survey_Group"(survey_group_id) ON DELETE CASCADE,
-    is_public BOOLEAN DEFAULT TRUE,
-    password VARCHAR(255), -- 🔐 solo para encuestas privadas
-    created_at TIMESTAMP DEFAULT now()
+    is_public BOOLEAN DEFAULT true,
+    password VARCHAR(255),
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- ❓ TABLA QUESTION
+-- ❓ QUESTIONS
 -- =========================================================
 CREATE TABLE "Question" (
     question_id SERIAL PRIMARY KEY,
     question_text TEXT NOT NULL,
     survey_id INT NOT NULL REFERENCES "Survey"(survey_id) ON DELETE CASCADE,
-    num_model INT
+    num_product INT REFERENCES "Product"(product_id) ON DELETE RESTRICT,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- 👤 TABLA USER_ACCOUNT
+-- 👤 USERS
 -- =========================================================
 CREATE TABLE "User_Account" (
-    user_id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100),
     email VARCHAR(255) UNIQUE,
-    created_at TIMESTAMP DEFAULT now()
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now(),
+    is_active BOOLEAN DEFAULT true
 );
 
 -- =========================================================
--- 🗳️ TABLA ANSWER
+-- 🗳️ ANSWERS
 -- =========================================================
 CREATE TABLE "Answer" (
     answer_id SERIAL PRIMARY KEY,
     question_id INT NOT NULL REFERENCES "Question"(question_id) ON DELETE CASCADE,
-    user_id uuid REFERENCES "User_Account"(user_id) ON DELETE SET NULL,
+    user_id UUID REFERENCES "User_Account"(user_id) ON DELETE SET NULL,
     answer_value INT CHECK (answer_value >= 0),
-    is_anonymous BOOLEAN DEFAULT FALSE,
-    created_at TIMESTAMP DEFAULT now()
+    is_anonymous BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT now(),
+    updated_at TIMESTAMP DEFAULT now()
 );
 
 -- =========================================================
--- 🔗 TABLA SURVEY_MODEL
+-- 🔗 RELACIONES MUCHOS A MUCHOS
 -- =========================================================
-CREATE TABLE "Survey_Model" (
-    survey_model_id SERIAL PRIMARY KEY,
+CREATE TABLE "Survey_Product" (
+    survey_product_id SERIAL PRIMARY KEY,
     survey_id INT NOT NULL REFERENCES "Survey"(survey_id) ON DELETE CASCADE,
-    model_id INT NOT NULL REFERENCES "Model"(model_id) ON DELETE CASCADE
+    product_id INT NOT NULL REFERENCES "Product"(product_id) ON DELETE CASCADE,
+    UNIQUE (survey_id, product_id)
 );
 
--- =========================================================
--- 🔗 TABLA QUESTION_MODEL
--- =========================================================
-CREATE TABLE "Question_Model" (
-    question_model_id SERIAL PRIMARY KEY,
+CREATE TABLE "Question_Product" (
+    question_product_id SERIAL PRIMARY KEY,
     question_id INT NOT NULL REFERENCES "Question"(question_id) ON DELETE CASCADE,
-    model_id INT NOT NULL REFERENCES "Model"(model_id) ON DELETE CASCADE
+    product_id INT NOT NULL REFERENCES "Product"(product_id) ON DELETE CASCADE,
+    UNIQUE (question_id, product_id)
 );
 
 -- =========================================================
--- 🔒 HABILITAR ROW LEVEL SECURITY (RLS)
+-- ⚙️ ROW LEVEL SECURITY (RLS)
 -- =========================================================
 ALTER TABLE "Admin" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Model_Group" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Model" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Product_Group" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Product" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Image" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Survey_Group" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Survey" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Question" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "User_Account" ENABLE ROW LEVEL SECURITY;
 ALTER TABLE "Answer" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Survey_Model" ENABLE ROW LEVEL SECURITY;
-ALTER TABLE "Question_Model" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Survey_Product" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "Question_Product" ENABLE ROW LEVEL SECURITY;
 
 -- =========================================================
--- 🔐 POLÍTICAS DE ADMINISTRADORES
+-- 🔐 POLÍTICAS DE SEGURIDAD
 -- =========================================================
-CREATE POLICY "Admins can read and update own data"
+
+-- 👑 ADMIN
+CREATE POLICY "Admin can manage self"
 ON "Admin"
 FOR ALL
 USING (auth.uid() = admin_id);
 
-CREATE POLICY "Admins manage their own model groups"
-ON "Model_Group"
+-- 🧩 PRODUCT GROUP
+CREATE POLICY "Admins manage own product groups"
+ON "Product_Group"
 FOR ALL
 USING (auth.uid() = admin_id);
 
-CREATE POLICY "Admins manage their own models"
-ON "Model"
+-- 🛍️ PRODUCT
+CREATE POLICY "Admins manage own products"
+ON "Product"
 FOR ALL
 USING (
-  auth.uid() = (
-    SELECT mg.admin_id FROM "Model_Group" mg 
-    WHERE mg.model_group_id = "Model".model_group_id
-  )
+    auth.uid() = (
+        SELECT pg.admin_id FROM "Product_Group" pg
+        WHERE pg.product_group_id = "Product".product_group_id
+    )
 );
 
-CREATE POLICY "Admins manage their own images"
+-- 🖼️ IMAGE
+CREATE POLICY "Admins manage images of their products"
 ON "Image"
 FOR ALL
 USING (
-  auth.uid() = (
-    SELECT mg.admin_id
-    FROM "Model_Group" mg
-    JOIN "Model" m ON m.model_group_id = mg.model_group_id
-    WHERE m.model_id = "Image".model_id
-  )
+    auth.uid() = (
+        SELECT pg.admin_id
+        FROM "Product_Group" pg
+        JOIN "Product" p ON p.product_group_id = pg.product_group_id
+        WHERE p.product_id = "Image".product_id
+    )
 );
 
-CREATE POLICY "Admins manage their own survey groups"
+-- 📋 SURVEY GROUP
+CREATE POLICY "Admins manage own survey groups"
 ON "Survey_Group"
 FOR ALL
 USING (auth.uid() = admin_id);
 
-CREATE POLICY "Admins manage their own surveys"
+-- 🧾 SURVEY
+CREATE POLICY "Admins manage own surveys"
 ON "Survey"
 FOR ALL
 USING (
-  auth.uid() = (
-    SELECT sg.admin_id
-    FROM "Survey_Group" sg
-    WHERE sg.survey_group_id = "Survey".survey_group_id
-  )
+    auth.uid() = (
+        SELECT sg.admin_id
+        FROM "Survey_Group" sg
+        WHERE sg.survey_group_id = "Survey".survey_group_id
+    )
 );
 
--- =========================================================
--- 🔐 POLÍTICAS PÚBLICAS
--- =========================================================
 CREATE POLICY "Public can view public surveys"
 ON "Survey"
 FOR SELECT
 USING (is_public = true);
 
-CREATE POLICY "Public can read questions from visible surveys"
+-- ❓ QUESTION
+CREATE POLICY "Public can read questions from public surveys"
 ON "Question"
 FOR SELECT
 USING (
-  "Question".survey_id IN (
-    SELECT survey_id FROM "Survey" WHERE is_public = true
-  )
+    "Question".survey_id IN (
+        SELECT survey_id FROM "Survey" WHERE is_public = true
+    )
 );
 
--- =========================================================
--- 👥 POLÍTICAS DE USUARIOS
--- =========================================================
-CREATE POLICY "Users can view own account" 
-ON "User_Account" 
-FOR SELECT 
+-- 👤 USER ACCOUNT
+CREATE POLICY "Users manage own account"
+ON "User_Account"
+FOR ALL
 USING (auth.uid() = user_id);
 
-CREATE POLICY "Users can insert own account" 
-ON "User_Account" 
-FOR INSERT 
-WITH CHECK (auth.uid() = user_id);
-
-CREATE POLICY "Users can update own account" 
-ON "User_Account" 
-FOR UPDATE 
-USING (auth.uid() = user_id);
-
-CREATE POLICY "Admins can manage all user accounts" 
-ON "User_Account" 
-FOR ALL 
-USING (
-  auth.uid() IN (
-    SELECT admin_id FROM "Admin"
-  )
-);
-
--- =========================================================
--- 🗳️ POLÍTICAS DE RESPUESTAS
--- =========================================================
-CREATE POLICY "Authenticated users can insert their answers"
+-- 🗳️ ANSWER
+CREATE POLICY "Authenticated users insert their answers"
 ON "Answer"
 FOR INSERT
 WITH CHECK (auth.uid() = user_id);
 
-CREATE POLICY "Anonymous users can insert answers"
+CREATE POLICY "Anonymous users can insert"
 ON "Answer"
 FOR INSERT
 WITH CHECK (is_anonymous = true);
 
-CREATE POLICY "Users can view only their own answers"
+CREATE POLICY "Users can view own answers"
 ON "Answer"
 FOR SELECT
 USING (auth.uid() = user_id);
 
-CREATE POLICY "Admins can view all answers from their surveys"
+CREATE POLICY "Admins view all answers of their surveys"
 ON "Answer"
 FOR SELECT
 USING (
-  auth.uid() IN (
-    SELECT sg.admin_id
-    FROM "Survey_Group" sg
-    JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
-    JOIN "Question" q ON q.survey_id = s.survey_id
-    WHERE q.question_id = "Answer".question_id
-  )
+    auth.uid() IN (
+        SELECT sg.admin_id
+        FROM "Survey_Group" sg
+        JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
+        JOIN "Question" q ON q.survey_id = s.survey_id
+        WHERE q.question_id = "Answer".question_id
+    )
+);
+
+-- 🔗 SURVEY_PRODUCT
+CREATE POLICY "Admins manage survey-product links"
+ON "Survey_Product"
+FOR ALL
+USING (
+    auth.uid() IN (
+        SELECT sg.admin_id
+        FROM "Survey_Group" sg
+        JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
+        WHERE s.survey_id = "Survey_Product".survey_id
+    )
+);
+
+CREATE POLICY "Public view public survey-product links"
+ON "Survey_Product"
+FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1 FROM "Survey" s
+        WHERE s.survey_id = "Survey_Product".survey_id
+        AND s.is_public = true
+    )
+);
+
+-- 🔗 QUESTION_PRODUCT
+CREATE POLICY "Admins manage question-product links"
+ON "Question_Product"
+FOR ALL
+USING (
+    auth.uid() IN (
+        SELECT sg.admin_id
+        FROM "Survey_Group" sg
+        JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
+        JOIN "Question" q ON q.survey_id = s.survey_id
+        WHERE q.question_id = "Question_Product".question_id
+    )
+);
+
+CREATE POLICY "Public view public question-product links"
+ON "Question_Product"
+FOR SELECT
+USING (
+    EXISTS (
+        SELECT 1
+        FROM "Question" q
+        JOIN "Survey" s ON q.survey_id = s.survey_id
+        WHERE q.question_id = "Question_Product".question_id
+        AND s.is_public = true
+    )
 );
 
 -- =========================================================
--- 🔗 POLÍTICAS DE RELACIONES
+-- ⚙️ FUNCIONES Y TRIGGERS
 -- =========================================================
-CREATE POLICY "Admins manage survey-model links"
-ON "Survey_Model"
-FOR ALL
-USING (
-  auth.uid() IN (
-    SELECT sg.admin_id
-    FROM "Survey_Group" sg
-    JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
-    WHERE s.survey_id = "Survey_Model".survey_id
-  )
-);
 
-CREATE POLICY "Public can view survey-models from public surveys"
-ON "Survey_Model"
-FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1 FROM "Survey" s
-    WHERE s.survey_id = "Survey_Model".survey_id
-    AND s.is_public = true
-  )
-);
+-- 🔄 Actualizar num_images automáticamente
+CREATE OR REPLACE FUNCTION update_num_images()
+RETURNS TRIGGER AS $$
+DECLARE
+    target_product_id INT;
+BEGIN
+    IF (TG_OP = 'INSERT' OR TG_OP = 'UPDATE') THEN
+        target_product_id := NEW.product_id;
+    ELSE
+        target_product_id := OLD.product_id;
+    END IF;
 
-CREATE POLICY "Admins manage question-model links"
-ON "Question_Model"
-FOR ALL
-USING (
-  auth.uid() IN (
-    SELECT sg.admin_id
-    FROM "Survey_Group" sg
-    JOIN "Survey" s ON s.survey_group_id = sg.survey_group_id
-    JOIN "Question" q ON q.survey_id = s.survey_id
-    WHERE q.question_id = "Question_Model".question_id
-  )
-);
+    UPDATE "Product"
+    SET num_images = (
+        SELECT COUNT(*) FROM "Image" WHERE product_id = target_product_id
+    )
+    WHERE product_id = target_product_id;
 
-CREATE POLICY "Public can view question-models from public surveys"
-ON "Question_Model"
-FOR SELECT
-USING (
-  EXISTS (
-    SELECT 1
-    FROM "Question" q
-    JOIN "Survey" s ON q.survey_id = s.survey_id
-    WHERE q.question_id = "Question_Model".question_id
-    AND s.is_public = true
-  )
-);
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_image_insert
+AFTER INSERT ON "Image"
+FOR EACH ROW EXECUTE FUNCTION update_num_images();
+
+CREATE TRIGGER trg_image_delete
+AFTER DELETE ON "Image"
+FOR EACH ROW EXECUTE FUNCTION update_num_images();
+
+CREATE TRIGGER trg_image_update
+AFTER UPDATE OF product_id ON "Image"
+FOR EACH ROW EXECUTE FUNCTION update_num_images();
+
+-- 🕒 Actualizar updated_at
+CREATE OR REPLACE FUNCTION set_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER trg_admin_updated_at BEFORE UPDATE ON "Admin" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_product_group_updated_at BEFORE UPDATE ON "Product_Group" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_product_updated_at BEFORE UPDATE ON "Product" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_image_updated_at BEFORE UPDATE ON "Image" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_survey_group_updated_at BEFORE UPDATE ON "Survey_Group" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_survey_updated_at BEFORE UPDATE ON "Survey" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_question_updated_at BEFORE UPDATE ON "Question" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_user_updated_at BEFORE UPDATE ON "User_Account" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_answer_updated_at BEFORE UPDATE ON "Answer" FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+-- =========================================================
+-- 🧨 DROP SCRIPT (LIMPIEZA)
+-- =========================================================
+/*
+DROP TABLE IF EXISTS "Question_Product" CASCADE;
+DROP TABLE IF EXISTS "Survey_Product" CASCADE;
+DROP TABLE IF EXISTS "Answer" CASCADE;
+DROP TABLE IF EXISTS "Question" CASCADE;
+DROP TABLE IF EXISTS "Image" CASCADE;
+DROP TABLE IF EXISTS "Survey" CASCADE;
+DROP TABLE IF EXISTS "Product" CASCADE;
+DROP TABLE IF EXISTS "Product_Group" CASCADE;
+DROP TABLE IF EXISTS "Survey_Group" CASCADE;
+DROP TABLE IF EXISTS "User_Account" CASCADE;
+DROP TABLE IF EXISTS "Admin" CASCADE;
+*/
